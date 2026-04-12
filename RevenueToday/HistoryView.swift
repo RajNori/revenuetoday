@@ -19,13 +19,18 @@ private struct MonthGroup: Identifiable {
 struct HistoryView: View {
     @Environment(\.managedObjectContext) private var viewContext
 
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \RevenueEntry.date, ascending: false)],
-        animation: .default
-    )
-    private var allEntries: FetchedResults<RevenueEntry>
+    @State private var fetchLimit = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? Date()
 
     @State private var expandedMonthIDs: Set<String> = []
+
+    private var allEntries: [RevenueEntry] {
+        let request = RevenueEntry.fetchRequest()
+        request.predicate = NSPredicate(format: "date >= %@", fetchLimit as CVarArg)
+        request.sortDescriptors = [
+            NSSortDescriptor(keyPath: \RevenueEntry.date, ascending: false)
+        ]
+        return (try? viewContext.fetch(request)) ?? []
+    }
 
     private var monthStarts: [Date] {
         let cal = Calendar.current
@@ -63,12 +68,6 @@ struct HistoryView: View {
     private var monthTitleFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "LLLL yyyy"
-        return f
-    }
-
-    private var shortDateFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
         return f
     }
 
@@ -111,6 +110,9 @@ struct HistoryView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                fetchLimit = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? Date()
+            }
         }
     }
 
@@ -220,9 +222,16 @@ struct HistoryView: View {
                             }
                         }
                         Spacer()
-                        Text(shortDateFormatter.string(from: entry.date ?? Date()))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.textTertiary)
+                        if let date = entry.date {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(date, style: .time)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "48484C"))
+                                Text(date, style: .date)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "48484C").opacity(0.7))
+                            }
+                        }
                     }
                     .padding(.horizontal, Theme.Layout.cardPaddingH)
                     .padding(.vertical, 10)
@@ -248,6 +257,7 @@ struct HistoryView: View {
     }
 
     private func monthEntries(for monthStart: Date) -> [RevenueEntry] {
-        (try? viewContext.entriesForMonth(date: monthStart)) ?? []
+        let month = (try? viewContext.entriesForMonth(date: monthStart)) ?? []
+        return month.filter { ($0.date ?? .distantPast) >= fetchLimit }
     }
 }

@@ -31,6 +31,25 @@ struct TodayView: View {
     @AppStorage("lastPaymentDate") private var lastPaymentDate: String = ""
     @AppStorage("longestStreak") private var longestStreak = 0
 
+    @State private var showRepeatToast = false
+    @State private var repeatToastLabel = ""
+
+    @AppStorage("bestDayAmount") private var bestDayAmount: Double = 0
+    @AppStorage("bestDayDate") private var bestDayDate: String = ""
+    @State private var showBestDayBanner = false
+
+    @State private var showEntryLimitAlert = false
+    @State private var showSettings = false
+
+    @AppStorage("lastEntryTimestamp") private var lastEntryTimestamp: Double = 0
+
+    private let dailyEntryLimit = 100
+    private let dailyEntryWarning = 50
+
+    private var todayEntryCount: Int {
+        entries.count
+    }
+
     private var todayTotal: Double {
         entries.reduce(0) { $0 + $1.amount }
     }
@@ -147,38 +166,141 @@ struct TodayView: View {
                                 .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
                                 .listRowSeparator(.hidden)
                         } else {
-                            ForEach(Array(entries.enumerated()), id: \.1.objectID) { index, entry in
-                                entryRow(entry, isFirst: index == 0)
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                    .listRowInsets(
-                                        EdgeInsets(
-                                            top: Theme.Layout.cardSpacing / 2,
-                                            leading: Theme.Layout.gutter,
-                                            bottom: Theme.Layout.cardSpacing / 2,
-                                            trailing: Theme.Layout.gutter
-                                        )
-                                    )
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            showDeleteConfirmation(for: entry)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                            LazyVStack(spacing: 8) {
+                                ForEach(Array(entries.enumerated()), id: \.1.objectID) { index, entry in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        if let dayTitle = daySeparatorTitleIfNeeded(at: index, for: entry) {
+                                            Text(dayTitle)
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .tracking(1.2)
+                                                .foregroundColor(Color(hex: "48484C"))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(.horizontal, 20)
+                                                .padding(.top, 8)
                                         }
-                                        Button {
-                                            entryToEdit = entry
-                                        } label: {
-                                            Label("Edit", systemImage: "pencil")
-                                        }
-                                        .tint(Theme.elevatedFill)
+                                        entryRow(entry, isFirst: index == 0)
+                                            .padding(.horizontal, 20)
+                                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                                Button(role: .destructive) {
+                                                    showDeleteConfirmation(for: entry)
+                                                } label: {
+                                                    Label("Delete", systemImage: "trash")
+                                                }
+                                                Button {
+                                                    entryToEdit = entry
+                                                } label: {
+                                                    Label("Edit", systemImage: "pencil")
+                                                }
+                                                .tint(Theme.elevatedFill)
+                                            }
                                     }
+                                }
                             }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: Theme.Layout.cardSpacing / 2,
+                                    leading: 0,
+                                    bottom: Theme.Layout.cardSpacing / 2,
+                                    trailing: 0
+                                )
+                            )
+                        }
+
+                        if !entries.isEmpty,
+                           todayEntryCount >= dailyEntryWarning,
+                           todayEntryCount < dailyEntryLimit {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(hex: "FF6B6B"))
+                                Text("\(dailyEntryLimit - todayEntryCount) entries remaining today")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(Color(hex: "8A8A8E"))
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .listRowSeparator(.hidden)
                         }
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .background(Theme.pageBackground)
+
+                if showBestDayBanner {
+                    VStack {
+                        HStack(spacing: 10) {
+                            Text("🏆")
+                                .font(.system(size: 18))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Best Day Ever!")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(formatCurrency(bestDayAmount))
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "00C896"))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: "1C1C22"))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            Color(hex: "00C896").opacity(0.4),
+                                            lineWidth: 1
+                                        )
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+
+                        Spacer()
+                    }
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: showBestDayBanner)
+                    .zIndex(997)
+                }
+
+                if showRepeatToast {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color(hex: "00C896"))
+                                .font(.system(size: 15))
+                            Text("Logged again: \(repeatToastLabel)")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: "1C1C22"))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            Color.white.opacity(0.1),
+                                            lineWidth: 0.5
+                                        )
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 100)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: showRepeatToast)
+                    .zIndex(998)
+                }
 
                 if showGoalBanner {
                     VStack {
@@ -215,6 +337,10 @@ struct TodayView: View {
                 }
 
                 Button {
+                    guard todayEntryCount < dailyEntryLimit else {
+                        showEntryLimitAlert = true
+                        return
+                    }
                     showAddSheet = true
                 } label: {
                     Image(systemName: "plus")
@@ -231,6 +357,7 @@ struct TodayView: View {
                 .padding(.bottom, 24)
                 .accessibilityLabel("Log new revenue")
                 .accessibilityAddTraits(.isButton)
+                .zIndex(1000)
             }
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: todayTotal) { _, newValue in
@@ -246,11 +373,13 @@ struct TodayView: View {
                         }
                     }
                 }
+                checkBestDay()
             }
             .onChange(of: entries.count) { _, _ in
                 if !entries.isEmpty {
                     updateStreak()
                 }
+                lastEntryTimestamp = Date().timeIntervalSince1970
             }
         }
         .sheet(isPresented: $showAddSheet) {
@@ -261,6 +390,10 @@ struct TodayView: View {
         }
         .sheet(isPresented: $showGoalSetter) {
             goalSetterSheet
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environment(\.managedObjectContext, viewContext)
         }
         .alert("Delete entry?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
@@ -277,6 +410,11 @@ struct TodayView: View {
             }
         } message: {
             Text("This payment entry will be removed.")
+        }
+        .alert("Daily limit reached", isPresented: $showEntryLimitAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You've logged \(dailyEntryLimit) payments today. That's the daily limit. If you need to log more, consider combining smaller payments into one entry.")
         }
     }
 
@@ -368,6 +506,46 @@ struct TodayView: View {
         .padding(.top, 12)
     }
 
+    private func repeatEntry(_ entry: RevenueEntry) {
+        let toastLabel = entry.label ?? formatCurrency(entry.amount)
+        let newEntry = RevenueEntry(context: viewContext)
+        newEntry.id = UUID()
+        newEntry.amount = entry.amount
+        newEntry.label = entry.label
+        newEntry.date = Date()
+        newEntry.createdAt = Date()
+        do {
+            try viewContext.save()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            repeatToastLabel = toastLabel
+            showRepeatToast = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showRepeatToast = false
+                }
+            }
+        } catch {
+            viewContext.rollback()
+            print("Repeat entry failed: \(error)")
+        }
+    }
+
+    private func checkBestDay() {
+        let previousBest = bestDayAmount
+        guard todayTotal > previousBest else { return }
+        let formatter = ISO8601DateFormatter()
+        let todayStr = formatter.string(from: Calendar.current.startOfDay(for: Date()))
+        bestDayAmount = todayTotal
+        bestDayDate = todayStr
+        showBestDayBanner = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showBestDayBanner = false
+            }
+        }
+    }
+
     private func updateStreak() {
         let formatter = ISO8601DateFormatter()
         let todayStr = formatter.string(from: Calendar.current.startOfDay(for: Date()))
@@ -396,17 +574,35 @@ struct TodayView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(weekdayFormatter.string(from: Date()).uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(1.2)
-                .foregroundStyle(Theme.textTertiary)
-            Text(fullDateFormatter.string(from: Date()))
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(Theme.textPrimary)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(weekdayFormatter.string(from: Date()).uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundColor(Color(hex: "48484C"))
+                Text(fullDateFormatter.string(from: Date()))
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            Spacer()
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(Color(hex: "48484C"))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(hex: "141418"))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                            )
+                    )
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Layout.gutter)
+        .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 20)
     }
@@ -476,6 +672,35 @@ struct TodayView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+
+            HStack {
+                HStack(spacing: 6) {
+                    Text("🏆")
+                        .font(.system(size: 13))
+                    Text("Best day")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(bestDayAmount > 0 ? formatCurrency(bestDayAmount) : "—")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(hex: "00C896"))
+                    if !bestDayDate.isEmpty,
+                       let date = ISO8601DateFormatter().date(from: bestDayDate) {
+                        Text(date, style: .date)
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "48484C"))
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
         .revenueCardBackground()
     }
@@ -500,6 +725,34 @@ struct TodayView: View {
     private func showDeleteConfirmation(for entry: RevenueEntry) {
         entryToDelete = entry
         showDeleteAlert = true
+    }
+
+    private func dateHeader(for entry: RevenueEntry) -> String {
+        guard let date = entry.date else { return "" }
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "TODAY"
+        }
+        if calendar.isDateInYesterday(date) {
+            return "YESTERDAY"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        return formatter.string(from: date).uppercased()
+    }
+
+    /// Header when the day changes vs the previous row (always for the first row).
+    private func daySeparatorTitleIfNeeded(at index: Int, for entry: RevenueEntry) -> String? {
+        let all = Array(entries)
+        let calendar = Calendar.current
+        if index > 0 {
+            let prev = all[index - 1]
+            if calendar.isDate(prev.date ?? Date(), inSameDayAs: entry.date ?? Date()) {
+                return nil
+            }
+        }
+        let title = dateHeader(for: entry)
+        return title.isEmpty ? nil : title
     }
 
     @ViewBuilder
@@ -565,6 +818,12 @@ struct TodayView: View {
             entryToEdit = entry
         }
         .contextMenu {
+            Button {
+                repeatEntry(entry)
+            } label: {
+                Label("Log Again", systemImage: "arrow.clockwise")
+            }
+
             Button {
                 entryToEdit = entry
             } label: {

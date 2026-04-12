@@ -22,12 +22,13 @@ struct AddEntryView: View {
     private let entry: RevenueEntry?
 
     @State private var amountString: String
-    @State private var labelText: String
+    @State private var label: String
+    @State private var showValidationAlert = false
 
     init(entry: RevenueEntry? = nil) {
         self.entry = entry
         _amountString = State(initialValue: Self.initialAmountString(for: entry))
-        _labelText = State(initialValue: entry?.label ?? "")
+        _label = State(initialValue: entry?.label ?? "")
     }
 
     private var isEditing: Bool {
@@ -66,14 +67,6 @@ struct AddEntryView: View {
             return formatCurrency(d)
         }
         return "$" + amountString
-    }
-
-    private var parsedAmount: Double {
-        var s = amountString
-        if s.hasSuffix(".") {
-            s.removeLast()
-        }
-        return Double(s) ?? 0
     }
 
     private var canSubmitAmount: Bool {
@@ -133,10 +126,18 @@ struct AddEntryView: View {
                     .foregroundStyle(Theme.textTertiary)
                 TextField(
                     "Client or project (optional)",
-                    text: $labelText
+                    text: $label
                 )
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textPrimary)
+                .onChange(of: label) { _, newValue in
+                    if newValue.count > 50 {
+                        label = String(newValue.prefix(50))
+                    }
+                    if newValue.first == " " {
+                        label = newValue.trimmingCharacters(in: .whitespaces)
+                    }
+                }
             }
             .padding(.horizontal, Theme.Layout.cardPaddingH)
             .padding(.vertical, Theme.Layout.cardPaddingV)
@@ -187,6 +188,11 @@ struct AddEntryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.pageBackground.ignoresSafeArea())
+        .alert("Invalid Amount", isPresented: $showValidationAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Please enter a valid amount between $0.01 and $999,999.99")
+        }
     }
 
     @ViewBuilder
@@ -279,16 +285,26 @@ struct AddEntryView: View {
     }
 
     private func save() {
-        let trimmed = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let labelOrNil = trimmed.isEmpty ? nil : trimmed
+        guard let amount = Double(amountString),
+              amount >= 0.01,
+              amount <= 999_999.99,
+              !amountString.hasPrefix("-"),
+              !amountString.hasSuffix(".")
+        else {
+            showValidationAlert = true
+            return
+        }
+
+        let trimmedLabel = label.trimmingCharacters(in: .whitespaces)
+        let labelOrNil = trimmedLabel.isEmpty ? nil : trimmedLabel
 
         if let existing = entry {
-            existing.amount = parsedAmount
+            existing.amount = amount
             existing.label = labelOrNil
         } else {
             let newEntry = RevenueEntry(context: viewContext)
             newEntry.id = UUID()
-            newEntry.amount = parsedAmount
+            newEntry.amount = amount
             newEntry.label = labelOrNil
             let now = Date()
             newEntry.date = now

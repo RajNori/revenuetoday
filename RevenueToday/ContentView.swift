@@ -28,6 +28,11 @@ struct ContentView: View {
                     )
                 }
                 .tag(1)
+            InsightsView()
+                .tabItem {
+                    Label("Insights", systemImage: "sparkles")
+                }
+                .tag(2)
         }
         .tabViewStyle(.automatic)
         .tint(Theme.accent)
