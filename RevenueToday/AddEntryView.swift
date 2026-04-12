@@ -130,7 +130,7 @@ struct AddEntryView: View {
                 )
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textPrimary)
-                .onChange(of: label) { _, newValue in
+                .onChange(of: label) { newValue in
                     if newValue.count > 50 {
                         label = String(newValue.prefix(50))
                     }

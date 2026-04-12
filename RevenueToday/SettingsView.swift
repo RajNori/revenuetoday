@@ -36,7 +36,7 @@ struct SettingsView: View {
                 .padding(.bottom, 32)
             }
         }
-        .onChange(of: lastEntryTimestamp) { _, _ in
+        .onChange(of: lastEntryTimestamp) { _ in
             scheduleDrySpellNotification()
         }
         .onAppear {
@@ -163,7 +163,7 @@ struct SettingsView: View {
                     Spacer()
                     Toggle("", isOn: $weeklyNotificationEnabled)
                         .tint(Color(hex: "00C896"))
-                        .onChange(of: weeklyNotificationEnabled) { _, enabled in
+                        .onChange(of: weeklyNotificationEnabled) { enabled in
                             if enabled {
                                 scheduleWeeklyNotification()
                             } else {
@@ -191,7 +191,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.menu)
                         .tint(Color(hex: "00C896"))
-                        .onChange(of: weeklyNotificationHour) { _, _ in
+                        .onChange(of: weeklyNotificationHour) { _ in
                             if weeklyNotificationEnabled {
                                 createWeeklyNotification()
                             }
@@ -234,7 +234,7 @@ struct SettingsView: View {
                     Spacer()
                     Toggle("", isOn: $drySpellEnabled)
                         .tint(Color(hex: "00C896"))
-                        .onChange(of: drySpellEnabled) { _, enabled in
+                        .onChange(of: drySpellEnabled) { enabled in
                             if enabled {
                                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
                                     DispatchQueue.main.async {
@@ -271,7 +271,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.menu)
                         .tint(Color(hex: "00C896"))
-                        .onChange(of: drySpellDays) { _, _ in
+                        .onChange(of: drySpellDays) { _ in
                             if drySpellEnabled {
                                 scheduleDrySpellNotification()
                             }

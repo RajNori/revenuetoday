@@ -360,7 +360,7 @@ struct TodayView: View {
                 .zIndex(1000)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: todayTotal) { _, newValue in
+            .onChange(of: todayTotal) { newValue in
                 let formatter = ISO8601DateFormatter()
                 let today = formatter.string(from: Calendar.current.startOfDay(for: Date()))
                 if newValue >= dailyGoal, lastGoalDate != today {
@@ -375,7 +375,7 @@ struct TodayView: View {
                 }
                 checkBestDay()
             }
-            .onChange(of: entries.count) { _, _ in
+            .onChange(of: entries.count) { _ in
                 if !entries.isEmpty {
                     updateStreak()
                 }
