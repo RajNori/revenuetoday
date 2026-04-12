@@ -2,8 +2,6 @@
 //  RevenueTodayApp.swift
 //  RevenueToday
 //
-//  Created by Raj on 12/4/2026.
-//
 
 import SwiftUI
 import CoreData
@@ -16,6 +14,7 @@ struct RevenueTodayApp: App {
         WindowGroup {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .preferredColorScheme(.dark)
         }
     }
 }
