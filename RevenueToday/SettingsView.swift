@@ -414,10 +414,30 @@ struct SettingsView: View {
                     .frame(height: 1)
                     .padding(.horizontal, 16)
 
-                if let privacyURL = URL(string: "https://rajnori.github.io/pickone-privacy/") {
+                if let privacyURL = URL(string: "https://rajnori.github.io/revenuetoday/privacy/") {
                     Link(destination: privacyURL) {
                         HStack {
                             Text("Privacy Policy")
+                                .font(.system(size: 15))
+                                .foregroundColor(.white)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "48484C"))
+                        }
+                        .padding(16)
+                    }
+                }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+
+                if let supportURL = URL(string: "https://rajnori.github.io/revenuetoday/support/") {
+                    Link(destination: supportURL) {
+                        HStack {
+                            Text("Support")
                                 .font(.system(size: 15))
                                 .foregroundColor(.white)
                             Spacer()
