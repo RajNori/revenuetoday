@@ -72,6 +72,14 @@ extension Color {
     }
 }
 
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 extension View {
     /// Notion-style bordered card (fill #141418 + hairline stroke).
     func revenueCardBackground(cornerRadius: CGFloat = Theme.Layout.cornerCard) -> some View {

@@ -11,7 +11,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		733CE2F12F8BB86800F384B3 /* Exceptions for "RevenueToday" folder */ = {
+		733CE2F12F8BB86800F384B3 /* Exceptions for "RevenueToday" folder in "RevenueToday" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -24,7 +24,7 @@
 		733CE2222F8BB86800F384B3 /* RevenueToday */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				733CE2F12F8BB86800F384B3 /* Exceptions for "RevenueToday" folder */,
+				733CE2F12F8BB86800F384B3 /* Exceptions for "RevenueToday" folder in "RevenueToday" target */,
 			);
 			path = RevenueToday;
 			sourceTree = "<group>";

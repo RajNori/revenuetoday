@@ -19,7 +19,6 @@ struct TodayView: View {
     @State private var showDeleteAlert = false
 
     @AppStorage("hasSeenSwipeHint") private var hasSeenSwipeHint = false
-    @State private var hintOffset: CGFloat = 0
 
     @AppStorage("dailyGoal") private var dailyGoal: Double = 500
     @AppStorage("lastGoalDate") private var lastGoalDate: String = ""
@@ -45,6 +44,36 @@ struct TodayView: View {
 
     private let dailyEntryLimit = 100
     private let dailyEntryWarning = 50
+
+    private enum PaymentRowItem: Identifiable {
+        case dayHeader(title: String, id: String)
+        case payment(RevenueEntry)
+
+        var id: String {
+            switch self {
+            case .dayHeader(_, let id):
+                return id
+            case .payment(let entry):
+                if let id = entry.id {
+                    return "\(id.uuidString)-e"
+                }
+                return "\(entry.objectID.uriRepresentation().absoluteString)-e"
+            }
+        }
+    }
+
+    /// One List row per day header and per entry so swipe actions attach only to payment rows.
+    private var paymentRows: [PaymentRowItem] {
+        var rows: [PaymentRowItem] = []
+        for (index, entry) in Array(entries.enumerated()) {
+            let entryKey = entry.id.map(\.uuidString) ?? entry.objectID.uriRepresentation().absoluteString
+            if let title = daySeparatorTitleIfNeeded(at: index, for: entry) {
+                rows.append(.dayHeader(title: title, id: "\(entryKey)-h"))
+            }
+            rows.append(.payment(entry))
+        }
+        return rows
+    }
 
     private var todayEntryCount: Int {
         entries.count
@@ -160,52 +189,62 @@ struct TodayView: View {
                             .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
                             .listRowSeparator(.hidden)
 
+                        if !hasSeenSwipeHint, !entries.isEmpty {
+                            Text("← Swipe an entry to edit or delete")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "48484C"))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 4)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
+                                .listRowSeparator(.hidden)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                                        hasSeenSwipeHint = true
+                                    }
+                                }
+                        }
+
                         if entries.isEmpty {
                             emptyPaymentsCard
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
                                 .listRowSeparator(.hidden)
                         } else {
-                            LazyVStack(spacing: 8) {
-                                ForEach(Array(entries.enumerated()), id: \.1.objectID) { index, entry in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        if let dayTitle = daySeparatorTitleIfNeeded(at: index, for: entry) {
-                                            Text(dayTitle)
-                                                .font(.system(size: 11, weight: .semibold))
-                                                .tracking(1.2)
-                                                .foregroundColor(Color(hex: "48484C"))
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .padding(.horizontal, 20)
-                                                .padding(.top, 8)
-                                        }
-                                        entryRow(entry, isFirst: index == 0)
-                                            .padding(.horizontal, 20)
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                                Button(role: .destructive) {
-                                                    showDeleteConfirmation(for: entry)
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash")
-                                                }
-                                                Button {
-                                                    entryToEdit = entry
-                                                } label: {
-                                                    Label("Edit", systemImage: "pencil")
-                                                }
-                                                .tint(Theme.elevatedFill)
-                                            }
-                                    }
+                            ForEach(paymentRows) { item in
+                                switch item {
+                                case let .dayHeader(title, _):
+                                    Text(title)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .tracking(1.2)
+                                        .foregroundColor(Color(hex: "48484C"))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.top, 8)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(
+                                            EdgeInsets(
+                                                top: 4,
+                                                leading: Theme.Layout.gutter,
+                                                bottom: 0,
+                                                trailing: Theme.Layout.gutter
+                                            )
+                                        )
+                                case let .payment(entry):
+                                    entryRow(entry)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(
+                                            EdgeInsets(
+                                                top: 4,
+                                                leading: Theme.Layout.gutter,
+                                                bottom: 4,
+                                                trailing: Theme.Layout.gutter
+                                            )
+                                        )
                                 }
                             }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(
-                                EdgeInsets(
-                                    top: Theme.Layout.cardSpacing / 2,
-                                    leading: 0,
-                                    bottom: Theme.Layout.cardSpacing / 2,
-                                    trailing: 0
-                                )
-                            )
                         }
 
                         if !entries.isEmpty,
@@ -722,11 +761,6 @@ struct TodayView: View {
         .revenueCardBackground()
     }
 
-    private func showDeleteConfirmation(for entry: RevenueEntry) {
-        entryToDelete = entry
-        showDeleteAlert = true
-    }
-
     private func dateHeader(for entry: RevenueEntry) -> String {
         guard let date = entry.date else { return "" }
         let calendar = Calendar.current
@@ -755,67 +789,56 @@ struct TodayView: View {
         return title.isEmpty ? nil : title
     }
 
-    @ViewBuilder
-    private func entryRow(_ entry: RevenueEntry, isFirst: Bool = false) -> some View {
-        ZStack(alignment: .trailing) {
-            HStack(alignment: .center, spacing: 12) {
-                Circle()
-                    .fill(Theme.accent)
-                    .frame(width: 8, height: 8)
+    private func entryRow(_ entry: RevenueEntry) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Circle()
+                .fill(Theme.accent)
+                .frame(width: 8, height: 8)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(formatCurrency(entry.amount))
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    if let label = entry.label, !label.isEmpty {
-                        Text(label)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                }
-
-                Spacer()
-
-                Text(timeFormatter.string(from: entry.date ?? Date()))
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(Theme.textTertiary)
-            }
-
-            if isFirst, !hasSeenSwipeHint {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.left")
-                        .font(.system(size: 10))
-                    Text("Swipe")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(Color(hex: "48484C"))
-                .padding(.trailing, 12)
-                .offset(x: hintOffset)
-                .allowsHitTesting(false)
-                .onAppear {
-                    guard !hasSeenSwipeHint else { return }
-                    withAnimation(
-                        .easeInOut(duration: 0.4)
-                            .delay(1.0)
-                            .repeatCount(2, autoreverses: true)
-                    ) {
-                        hintOffset = -8
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            hintOffset = 0
-                        }
-                        hasSeenSwipeHint = true
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(formatCurrency(entry.amount))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                if let label = entry.label, !label.isEmpty {
+                    Text(label)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Theme.textSecondary)
                 }
             }
+
+            Spacer()
+
+            Text(timeFormatter.string(from: entry.date ?? Date()))
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Theme.textTertiary)
         }
         .padding(.horizontal, Theme.Layout.cardPaddingH)
         .padding(.vertical, Theme.Layout.cardPaddingV)
-        .revenueCardBackground()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(hex: "141418"))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             entryToEdit = entry
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                entryToDelete = entry
+                showDeleteAlert = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                entryToEdit = entry
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(Color(hex: "1C1C22"))
         }
         .contextMenu {
             Button {

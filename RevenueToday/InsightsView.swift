@@ -41,7 +41,9 @@ struct InsightsView: View {
                 }
                 .padding(.bottom, 32)
             }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var headerSection: some View {
@@ -56,7 +58,7 @@ struct InsightsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
-        .padding(.top, 16)
+        .padding(.top, 56)
         .padding(.bottom, 24)
     }
 
@@ -124,6 +126,7 @@ struct InsightsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var gridView: some View {
@@ -131,21 +134,23 @@ struct InsightsView: View {
             Array(yearDays[$0..<min($0 + 7, yearDays.count)])
         }
 
-        return HStack(alignment: .top, spacing: 2) {
-            ForEach(weeks.indices, id: \.self) { weekIndex in
-                VStack(spacing: 2) {
-                    ForEach(weeks[weekIndex], id: \.timeIntervalSince1970) { day in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(cellColor(for: day))
-                            .frame(width: 9, height: 9)
-                            .onTapGesture {
-                                selectedDay = day
-                            }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 2) {
+                ForEach(weeks.indices, id: \.self) { weekIndex in
+                    VStack(spacing: 2) {
+                        ForEach(weeks[weekIndex], id: \.timeIntervalSince1970) { day in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(cellColor(for: day))
+                                .frame(width: 9, height: 9)
+                                .onTapGesture {
+                                    selectedDay = day
+                                }
+                        }
                     }
                 }
             }
+            .padding(.horizontal, 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var selectedDayTooltip: some View {
@@ -293,12 +298,23 @@ struct InsightsView: View {
                     .foregroundColor(Color(hex: "48484C"))
             }
 
-            Picker("Period", selection: $leaderboardPeriod) {
+            HStack(spacing: 0) {
                 ForEach(LeaderboardPeriod.allCases, id: \.self) { period in
-                    Text(period.rawValue).tag(period)
+                    Button {
+                        leaderboardPeriod = period
+                    } label: {
+                        Text(period.rawValue)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(leaderboardPeriod == period ? .white : Color(hex: "8A8A8E"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
-            .pickerStyle(.segmented)
+            .padding(2)
+            .background(Color(hex: "1C1C22"))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding(.bottom, 4)
 
             if clientTotals.isEmpty {
