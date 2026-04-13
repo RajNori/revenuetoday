@@ -8,12 +8,30 @@ import Charts
 import CoreData
 import UIKit
 
+private struct DailyPL: Identifiable {
+    let date: Date
+    let income: Double
+    let expenses: Double
+
+    var id: TimeInterval { date.timeIntervalSince1970 }
+
+    var net: Double { income - expenses }
+}
+
 private struct MonthGroup: Identifiable {
     let id: String
     let monthStart: Date
     let label: String
-    let total: Double
+    let revenue: Double
+    let expenses: Double
     let entries: [RevenueEntry]
+
+    var net: Double { revenue - expenses }
+
+    var margin: Int {
+        guard revenue > 0 else { return 0 }
+        return Int((net / revenue) * 100)
+    }
 }
 
 struct HistoryView: View {
@@ -54,12 +72,14 @@ struct HistoryView: View {
     private var monthGroups: [MonthGroup] {
         monthStarts.map { ms in
             let entries = monthEntries(for: ms)
-            let total = entries.reduce(0) { $0 + $1.amount }
+            let revenue = entries.filter(\.isIncome).reduce(0) { $0 + $1.amount }
+            let expenses = entries.filter(\.isExpense).reduce(0) { $0 + $1.amount }
             return MonthGroup(
                 id: monthId(for: ms),
                 monthStart: ms,
                 label: monthTitleFormatter.string(from: ms),
-                total: total,
+                revenue: revenue,
+                expenses: expenses,
                 entries: entries
             )
         }
@@ -71,8 +91,26 @@ struct HistoryView: View {
         return f
     }
 
-    private var dailyPoints: [(date: Date, total: Double)] {
-        viewContext.dailyTotals(days: 30).map { (date: $0.0, total: $0.1) }
+    private var dailyData: [DailyPL] {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+
+        var grouped: [Date: (Double, Double)] = [:]
+
+        for entry in allEntries {
+            guard let date = entry.date, date >= thirtyDaysAgo else { continue }
+            let day = calendar.startOfDay(for: date)
+            if entry.isExpense {
+                grouped[day, default: (0, 0)].1 += entry.amount
+            } else {
+                grouped[day, default: (0, 0)].0 += entry.amount
+            }
+        }
+
+        return grouped.map { date, values in
+            DailyPL(date: date, income: values.0, expenses: values.1)
+        }
+        .sorted { $0.date < $1.date }
     }
 
     private var heroFontSize: CGFloat {
@@ -143,19 +181,36 @@ struct HistoryView: View {
                 .textCase(.uppercase)
 
             Chart {
-                ForEach(dailyPoints, id: \.date.timeIntervalSince1970) { point in
+                ForEach(dailyData) { day in
                     BarMark(
-                        x: .value("Day", point.date),
-                        y: .value("Amount", point.total)
+                        x: .value("Day", day.date, unit: .day),
+                        y: .value("Income", day.income),
+                        width: .ratio(0.4)
                     )
-                    .foregroundStyle(
-                        Calendar.current.isDate(point.date, inSameDayAs: Date())
-                        ? Theme.accent
-                        : Theme.accent.opacity(0.45)
+                    .foregroundStyle(Color(hex: "00C896").opacity(0.8))
+                    .offset(x: -4)
+
+                    BarMark(
+                        x: .value("Day", day.date, unit: .day),
+                        y: .value("Expenses", day.expenses),
+                        width: .ratio(0.4)
                     )
+                    .foregroundStyle(Color(hex: "FF6B6B").opacity(0.8))
+                    .offset(x: 4)
+                }
+
+                ForEach(dailyData) { day in
+                    LineMark(
+                        x: .value("Day", day.date, unit: .day),
+                        y: .value("Net", day.net)
+                    )
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 2]))
+                    .symbol(.circle)
+                    .symbolSize(20)
                 }
             }
-            .frame(height: 160)
+            .frame(height: 180)
             .chartXAxis {
                 AxisMarks(values: .automatic) { _ in
                     AxisValueLabel()
@@ -172,9 +227,47 @@ struct HistoryView: View {
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
+
+            HStack(spacing: 16) {
+                legendItem(color: Color(hex: "00C896"), label: "Income")
+                legendItem(color: Color(hex: "FF6B6B"), label: "Expenses")
+                legendItem(color: .white.opacity(0.6), label: "Net", isDashed: true)
+                Spacer()
+            }
+            .padding(.top, 8)
         }
         .padding(Theme.Layout.cardPaddingH)
         .revenueCardBackground()
+    }
+
+    private func legendItem(color: Color, label: String, isDashed: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            if isDashed {
+                Rectangle()
+                    .fill(color)
+                    .frame(width: 16, height: 1.5)
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: 12, height: 8)
+            }
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(Color(hex: "48484C"))
+        }
+    }
+
+    private func marginColor(_ margin: Int) -> Color {
+        switch margin {
+        case 80...:
+            return Color(hex: "00C896")
+        case 60..<80:
+            return .white
+        case 40..<60:
+            return Color(hex: "FF9500")
+        default:
+            return Color(hex: "FF6B6B")
+        }
     }
 
     @ViewBuilder
@@ -187,9 +280,9 @@ struct HistoryView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Text(formatCurrency(month.total))
+                Text(formatCurrency(month.net))
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(month.net >= 0 ? Theme.accent : Theme.danger)
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textTertiary)
@@ -206,15 +299,63 @@ struct HistoryView: View {
                     .frame(height: 1)
                     .padding(.horizontal, Theme.Layout.cardPaddingH)
 
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Revenue")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Text(formatCurrency(month.revenue))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(hex: "00C896"))
+                    }
+                    if month.expenses > 0 {
+                        HStack {
+                            Text("Expenses")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textSecondary)
+                            Spacer()
+                            Text("- \(formatCurrency(month.expenses))")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: "FF6B6B"))
+                        }
+                    }
+                    HStack {
+                        Text("Net")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Text(formatCurrency(month.net))
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                    HStack {
+                        Text("Margin")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Text("\(month.margin)%")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(marginColor(month.margin))
+                    }
+                }
+                .padding(.horizontal, Theme.Layout.cardPaddingH)
+                .padding(.vertical, 12)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(height: 1)
+                    .padding(.horizontal, Theme.Layout.cardPaddingH)
+
                 ForEach(month.entries, id: \.objectID) { entry in
                     HStack(alignment: .center, spacing: 10) {
                         Circle()
-                            .fill(Theme.accent)
+                            .fill(entry.isExpense ? Color(hex: "FF6B6B") : Theme.accent)
                             .frame(width: 6, height: 6)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(formatCurrency(entry.amount))
+                            Text("\(entry.isExpense ? "- " : "")\(formatCurrency(entry.amount))")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
+                                .foregroundStyle(entry.isExpense ? Color(hex: "FF6B6B") : Theme.textPrimary)
                             if let label = entry.label, !label.isEmpty {
                                 Text(label)
                                     .font(.system(size: 12))

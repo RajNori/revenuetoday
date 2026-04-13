@@ -42,6 +42,8 @@ struct TodayView: View {
 
     @AppStorage("lastEntryTimestamp") private var lastEntryTimestamp: Double = 0
 
+    @State private var entryFilter: String = "all"
+
     private let dailyEntryLimit = 100
     private let dailyEntryWarning = 50
 
@@ -62,12 +64,25 @@ struct TodayView: View {
         }
     }
 
+    private var filteredTodayEntries: [RevenueEntry] {
+        let todayEntries = entries.filter { Calendar.current.isDateInToday($0.date ?? Date()) }
+        switch entryFilter {
+        case "income":
+            return todayEntries.filter { $0.isIncome }
+        case "expenses":
+            return todayEntries.filter { $0.isExpense }
+        default:
+            return todayEntries
+        }
+    }
+
     /// One List row per day header and per entry so swipe actions attach only to payment rows.
     private var paymentRows: [PaymentRowItem] {
+        let list = filteredTodayEntries
         var rows: [PaymentRowItem] = []
-        for (index, entry) in Array(entries.enumerated()) {
+        for (index, entry) in list.enumerated() {
             let entryKey = entry.id.map(\.uuidString) ?? entry.objectID.uriRepresentation().absoluteString
-            if let title = daySeparatorTitleIfNeeded(at: index, for: entry) {
+            if let title = daySeparatorTitleIfNeeded(at: index, for: entry, in: list) {
                 rows.append(.dayHeader(title: title, id: "\(entryKey)-h"))
             }
             rows.append(.payment(entry))
@@ -79,12 +94,62 @@ struct TodayView: View {
         entries.count
     }
 
+    private func isThisMonth(_ date: Date) -> Bool {
+        Calendar.current.isDate(date, equalTo: Date(), toGranularity: .month)
+    }
+
     private var todayTotal: Double {
-        entries.reduce(0) { $0 + $1.amount }
+        entries
+            .filter { $0.isIncome }
+            .filter { Calendar.current.isDateInToday($0.date ?? Date()) }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var todayExpenses: Double {
+        entries
+            .filter { $0.isExpense }
+            .filter { Calendar.current.isDateInToday($0.date ?? Date()) }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var todayNet: Double {
+        todayTotal - todayExpenses
     }
 
     private var monthTotal: Double {
-        viewContext.thisMonthTotal()
+        entries
+            .filter { $0.isIncome }
+            .filter { isThisMonth($0.date ?? Date()) }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var monthExpenses: Double {
+        entries
+            .filter { $0.isExpense }
+            .filter { isThisMonth($0.date ?? Date()) }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var monthNet: Double {
+        monthTotal - monthExpenses
+    }
+
+    private var monthMargin: Int {
+        guard monthTotal > 0 else { return 0 }
+        return Int((monthNet / monthTotal) * 100)
+    }
+
+    private func marginColor(_ margin: Int) -> Color {
+        switch margin {
+        case 80...:
+            return Color(hex: "00C896")
+        case 60..<80:
+            return .white
+        case 40..<60:
+            return Color(hex: "FF9500")
+        default:
+            return Color(hex: "FF6B6B")
+        }
     }
 
     private var weekdayFormatter: DateFormatter {
@@ -118,19 +183,25 @@ struct TodayView: View {
         }
 
         let thisMonthRequest: NSFetchRequest<RevenueEntry> = RevenueEntry.fetchRequest()
-        thisMonthRequest.predicate = NSPredicate(
+        let thisMonthDatePred = NSPredicate(
             format: "date >= %@ AND date <= %@",
             startOfMonth as NSDate,
             now as NSDate
+        )
+        thisMonthRequest.predicate = NSCompoundPredicate(
+            andPredicateWithSubpredicates: [thisMonthDatePred, RevenueEntry.incomeOnlyPredicate]
         )
         let thisMonthEntries = (try? viewContext.fetch(thisMonthRequest)) ?? []
         let thisMonthTotalPace = thisMonthEntries.reduce(0) { $0 + $1.amount }
 
         let lastMonthRequest: NSFetchRequest<RevenueEntry> = RevenueEntry.fetchRequest()
-        lastMonthRequest.predicate = NSPredicate(
+        let lastMonthDatePred = NSPredicate(
             format: "date >= %@ AND date <= %@",
             startOfLastMonth as NSDate,
             endOfLastMonthSamePeriod as NSDate
+        )
+        lastMonthRequest.predicate = NSCompoundPredicate(
+            andPredicateWithSubpredicates: [lastMonthDatePred, RevenueEntry.incomeOnlyPredicate]
         )
         let lastMonthEntries = (try? viewContext.fetch(lastMonthRequest)) ?? []
         let lastMonthTotalPace = lastMonthEntries.reduce(0) { $0 + $1.amount }
@@ -177,17 +248,25 @@ struct TodayView: View {
                     }
 
                     Section {
-                        Text("PAYMENTS")
-                            .font(.system(size: 11, weight: .semibold))
-                            .tracking(1.2)
-                            .foregroundStyle(Theme.textTertiary)
-                            .textCase(.uppercase)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, Theme.Layout.sectionSpacing)
-                            .padding(.bottom, 4)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
-                            .listRowSeparator(.hidden)
+                        HStack(spacing: 8) {
+                            Text("PAYMENTS")
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(1.2)
+                                .foregroundStyle(Theme.textTertiary)
+                                .textCase(.uppercase)
+                            Spacer()
+                            HStack(spacing: 6) {
+                                filterPill("All", key: "all")
+                                filterPill("Income", key: "income")
+                                filterPill("Expenses", key: "expenses")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, Theme.Layout.sectionSpacing)
+                        .padding(.bottom, 4)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
+                        .listRowSeparator(.hidden)
 
                         if !hasSeenSwipeHint, !entries.isEmpty {
                             Text("← Swipe an entry to edit or delete")
@@ -208,6 +287,15 @@ struct TodayView: View {
 
                         if entries.isEmpty {
                             emptyPaymentsCard
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
+                                .listRowSeparator(.hidden)
+                        } else if filteredTodayEntries.isEmpty {
+                            Text("No entries for this filter")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 16)
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets(top: 0, leading: Theme.Layout.gutter, bottom: 0, trailing: Theme.Layout.gutter))
                                 .listRowSeparator(.hidden)
@@ -551,6 +639,7 @@ struct TodayView: View {
         newEntry.id = UUID()
         newEntry.amount = entry.amount
         newEntry.label = entry.label
+        newEntry.entryType = entry.entryType
         newEntry.date = Date()
         newEntry.createdAt = Date()
         do {
@@ -691,6 +780,56 @@ struct TodayView: View {
             }
             .padding(16)
 
+            if todayExpenses > 0 || monthExpenses > 0 {
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "FF6B6B"))
+                        Text("EXPENSES")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundColor(Color(hex: "48484C"))
+                    }
+                    Spacer()
+                    Text("- \(formatCurrency(monthExpenses))")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color(hex: "FF6B6B"))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+
+            if monthExpenses > 0 {
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("NET PROFIT")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundColor(Color(hex: "48484C"))
+                        Text("MARGIN \(monthMargin)%")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundColor(marginColor(monthMargin))
+                    }
+                    Spacer()
+                    Text(formatCurrency(monthNet))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(monthNet >= 0 ? .white : Color(hex: "FF6B6B"))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+
             Rectangle()
                 .fill(Color.white.opacity(0.05))
                 .frame(height: 1)
@@ -776,8 +915,7 @@ struct TodayView: View {
     }
 
     /// Header when the day changes vs the previous row (always for the first row).
-    private func daySeparatorTitleIfNeeded(at index: Int, for entry: RevenueEntry) -> String? {
-        let all = Array(entries)
+    private func daySeparatorTitleIfNeeded(at index: Int, for entry: RevenueEntry, in all: [RevenueEntry]) -> String? {
         let calendar = Calendar.current
         if index > 0 {
             let prev = all[index - 1]
@@ -789,16 +927,35 @@ struct TodayView: View {
         return title.isEmpty ? nil : title
     }
 
+    private func filterPill(_ label: String, key: String) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                entryFilter = key
+            }
+        } label: {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(entryFilter == key ? .black : Color(hex: "8A8A8E"))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(entryFilter == key ? Color(hex: "00C896") : Color(hex: "1C1C22"))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func entryRow(_ entry: RevenueEntry) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Circle()
-                .fill(Theme.accent)
+                .fill(entry.isExpense ? Color(hex: "FF6B6B") : Color(hex: "00C896"))
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(formatCurrency(entry.amount))
+                Text("\(entry.isExpense ? "- " : "")\(formatCurrency(entry.amount))")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
+                    .foregroundColor(entry.isExpense ? Color(hex: "FF6B6B") : .white)
                 if let label = entry.label, !label.isEmpty {
                     Text(label)
                         .font(.system(size: 13, weight: .regular))
@@ -865,11 +1022,12 @@ struct TodayView: View {
     }
 
     private func accessibilityLabel(for entry: RevenueEntry) -> String {
+        let prefix = entry.isExpense ? "Expense " : ""
         let amt = formatCurrency(entry.amount)
         if let label = entry.label, !label.isEmpty {
-            return "\(amt) from \(label)"
+            return "\(prefix)\(amt) from \(label)"
         }
-        return amt
+        return "\(prefix)\(amt)"
     }
 }
 

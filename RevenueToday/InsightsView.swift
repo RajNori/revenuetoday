@@ -14,9 +14,17 @@ enum LeaderboardPeriod: String, CaseIterable {
 struct ClientTotal: Identifiable {
     let id: String
     let name: String
-    let total: Double
+    let revenue: Double
+    let expenses: Double
     let entryCount: Int
     let percentage: Double
+
+    var net: Double { revenue - expenses }
+
+    var margin: Int {
+        guard revenue > 0 else { return 0 }
+        return Int((net / revenue) * 100)
+    }
 }
 
 struct InsightsView: View {
@@ -62,12 +70,22 @@ struct InsightsView: View {
         .padding(.bottom, 24)
     }
 
-    private var yearData: [Date: Double] {
+    private var yearIncomeData: [Date: Double] {
         let calendar = Calendar.current
         var result: [Date: Double] = [:]
-
         for entry in allEntries {
-            guard let date = entry.date else { continue }
+            guard let date = entry.date, entry.isIncome else { continue }
+            let startOfDay = calendar.startOfDay(for: date)
+            result[startOfDay, default: 0] += entry.amount
+        }
+        return result
+    }
+
+    private var yearExpenseData: [Date: Double] {
+        let calendar = Calendar.current
+        var result: [Date: Double] = [:]
+        for entry in allEntries {
+            guard let date = entry.date, entry.isExpense else { continue }
             let startOfDay = calendar.startOfDay(for: date)
             result[startOfDay, default: 0] += entry.amount
         }
@@ -87,23 +105,31 @@ struct InsightsView: View {
     }
 
     private var maxDayRevenue: Double {
-        yearData.values.max() ?? 1
+        max(yearIncomeData.values.max() ?? 0, 1)
     }
 
     private func cellColor(for date: Date) -> Color {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
-        let amount = yearData[startOfDay] ?? 0
 
         if startOfDay > calendar.startOfDay(for: Date()) {
             return Color.white.opacity(0.04)
         }
 
-        if amount == 0 {
+        let income = yearIncomeData[startOfDay] ?? 0
+        let expenses = yearExpenseData[startOfDay] ?? 0
+        let net = income - expenses
+
+        if income == 0 && expenses == 0 {
             return Color.white.opacity(0.06)
         }
 
-        let ratio = amount / maxDayRevenue
+        if net < 0 {
+            let ratio = min(abs(net) / maxDayRevenue, 1.0)
+            return Color(hex: "FF6B6B").opacity(0.2 + (ratio * 0.6))
+        }
+
+        let ratio = min(net / maxDayRevenue, 1.0)
         switch ratio {
         case 0..<0.25:
             return Color(hex: "00C896").opacity(0.25)
@@ -165,16 +191,54 @@ struct InsightsView: View {
     private func selectedDayTooltipContent(day: Date) -> some View {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: day)
-        let amount = yearData[startOfDay] ?? 0
+        let income = yearIncomeData[startOfDay] ?? 0
+        let expenses = yearExpenseData[startOfDay] ?? 0
+        let net = income - expenses
 
-        return HStack(spacing: 8) {
-            Text(day, style: .date)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Color(hex: "8A8A8E"))
-            Spacer()
-            Text(amount > 0 ? formatCurrency(amount) : "No revenue")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(amount > 0 ? Color(hex: "00C896") : Color(hex: "48484C"))
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(day, style: .date)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(hex: "8A8A8E"))
+                Spacer()
+            }
+            if income > 0 {
+                HStack {
+                    Text("Income")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "48484C"))
+                    Spacer()
+                    Text(formatCurrency(income))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "00C896"))
+                }
+            }
+            if expenses > 0 {
+                HStack {
+                    Text("Expenses")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "48484C"))
+                    Spacer()
+                    Text("- \(formatCurrency(expenses))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "FF6B6B"))
+                }
+            }
+            if income == 0 && expenses == 0 {
+                Text("No activity")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "48484C"))
+            } else {
+                HStack {
+                    Text("Net")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "48484C"))
+                    Spacer()
+                    Text(formatCurrency(net))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(net >= 0 ? Color(hex: "00C896") : Color(hex: "FF6B6B"))
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -257,9 +321,9 @@ struct InsightsView: View {
     }
 
     private var clientTotals: [ClientTotal] {
-        var grouped: [String: (Double, Int)] = [:]
+        var grouped: [String: (revenue: Double, expenses: Double, count: Int)] = [:]
         let entries = filteredEntries
-        let grandTotal = entries.reduce(0) { $0 + $1.amount }
+        let grandRevenue = entries.filter(\.isIncome).reduce(0) { $0 + $1.amount }
 
         for entry in entries {
             let key: String
@@ -268,8 +332,14 @@ struct InsightsView: View {
             } else {
                 key = "Untagged"
             }
-            grouped[key, default: (0, 0)].0 += entry.amount
-            grouped[key, default: (0, 0)].1 += 1
+            var bucket = grouped[key, default: (revenue: 0, expenses: 0, count: 0)]
+            if entry.isExpense {
+                bucket.expenses += entry.amount
+            } else {
+                bucket.revenue += entry.amount
+            }
+            bucket.count += 1
+            grouped[key] = bucket
         }
 
         return grouped
@@ -277,12 +347,13 @@ struct InsightsView: View {
                 ClientTotal(
                     id: name,
                     name: name,
-                    total: data.0,
-                    entryCount: data.1,
-                    percentage: grandTotal > 0 ? (data.0 / grandTotal) * 100 : 0
+                    revenue: data.revenue,
+                    expenses: data.expenses,
+                    entryCount: data.count,
+                    percentage: grandRevenue > 0 ? (data.revenue / grandRevenue) * 100 : 0
                 )
             }
-            .sorted { $0.total > $1.total }
+            .sorted { $0.net > $1.net }
     }
 
     private var leaderboardSection: some View {
@@ -378,10 +449,14 @@ struct InsightsView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formatCurrency(client.total))
+                    Text(formatCurrency(client.net))
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(isTop ? Color(hex: "00C896") : .white)
-                    Text("\(Int(client.percentage))%")
+                        .foregroundColor(
+                            client.net >= 0
+                                ? (isTop ? Color(hex: "00C896") : .white)
+                                : Color(hex: "FF6B6B")
+                        )
+                    Text("\(client.margin)% margin")
                         .font(.system(size: 11))
                         .foregroundColor(Color(hex: "48484C"))
                 }

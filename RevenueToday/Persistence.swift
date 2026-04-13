@@ -21,6 +21,7 @@ struct PersistenceController {
             entry.label = i == 0 ? "Sample" : nil
             entry.date = cal.date(byAdding: .hour, value: i * 2, to: today) ?? today
             entry.createdAt = entry.date
+            entry.entryType = "income"
         }
         do {
             try viewContext.save()
@@ -38,6 +39,10 @@ struct PersistenceController {
             if let desc = container.persistentStoreDescriptions.first {
                 desc.url = URL(fileURLWithPath: "/dev/null")
             }
+        }
+        for description in container.persistentStoreDescriptions {
+            description.shouldMigrateStoreAutomatically = true
+            description.shouldInferMappingModelAutomatically = true
         }
         container.loadPersistentStores { _, error in
             if let error = error as NSError? {
@@ -63,7 +68,9 @@ extension NSManagedObjectContext {
 
     func todayTotal() -> Double {
         do {
-            return try entriesForToday().reduce(0) { $0 + $1.amount }
+            return try entriesForToday()
+                .filter(\.isIncome)
+                .reduce(0) { $0 + $1.amount }
         } catch {
             return 0
         }
@@ -79,7 +86,27 @@ extension NSManagedObjectContext {
             else {
                 return 0
             }
-            return try entries(from: start, toExclusive: end).reduce(0) { $0 + $1.amount }
+            return try entries(from: start, toExclusive: end)
+                .filter(\.isIncome)
+                .reduce(0) { $0 + $1.amount }
+        } catch {
+            return 0
+        }
+    }
+
+    func thisMonthExpenseTotal() -> Double {
+        do {
+            let cal = Calendar.current
+            let now = Date()
+            let comps = cal.dateComponents([.year, .month], from: now)
+            guard let start = cal.date(from: comps),
+                  let end = cal.date(byAdding: .month, value: 1, to: start)
+            else {
+                return 0
+            }
+            return try entries(from: start, toExclusive: end)
+                .filter(\.isExpense)
+                .reduce(0) { $0 + $1.amount }
         } catch {
             return 0
         }
@@ -105,7 +132,9 @@ extension NSManagedObjectContext {
             guard let next = cal.date(byAdding: .day, value: 1, to: dayStart) else { continue }
             let sum: Double
             do {
-                sum = try entries(from: dayStart, toExclusive: next).reduce(0) { $0 + $1.amount }
+                sum = try entries(from: dayStart, toExclusive: next)
+                    .filter(\.isIncome)
+                    .reduce(0) { $0 + $1.amount }
             } catch {
                 sum = 0
             }
@@ -123,6 +152,16 @@ extension NSManagedObjectContext {
 }
 
 extension RevenueEntry {
+    static let incomeOnlyPredicate = NSPredicate(format: "(entryType != %@) OR (entryType == nil)", "expense")
+
+    var isExpense: Bool {
+        entryType == "expense"
+    }
+
+    var isIncome: Bool {
+        entryType != "expense"
+    }
+
     static func todayFetchRequest() -> NSFetchRequest<RevenueEntry> {
         let request = NSFetchRequest<RevenueEntry>(entityName: "RevenueEntry")
         let cal = Calendar.current

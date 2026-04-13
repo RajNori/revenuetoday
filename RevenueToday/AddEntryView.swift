@@ -15,24 +15,32 @@ struct AddEntryView: View {
 
     @State private var amountString: String
     @State private var label: String
+    @State private var entryType: String
     @State private var showValidationAlert = false
 
     init(entry: RevenueEntry? = nil) {
         self.entry = entry
         _amountString = State(initialValue: Self.initialAmountString(for: entry))
         _label = State(initialValue: entry?.label ?? "")
+        _entryType = State(initialValue: entry?.entryType ?? "income")
     }
 
     private var isEditing: Bool {
         entry != nil
     }
 
-    private var title: String {
-        isEditing ? "Edit Payment" : "Log Payment"
+    private var sheetTitle: String {
+        if isEditing {
+            return entryType == "expense" ? "Edit Expense" : "Edit Payment"
+        }
+        return entryType == "expense" ? "Log Expense" : "Log Payment"
     }
 
     private var primaryButtonTitle: String {
-        isEditing ? "Save changes" : "Log payment"
+        if isEditing {
+            return "Save changes"
+        }
+        return entryType == "expense" ? "Log expense" : "Log payment"
     }
 
     private var heroDisplaySize: CGFloat {
@@ -61,8 +69,24 @@ struct AddEntryView: View {
         return "$" + amountString
     }
 
+    private var amountDisplayColor: Color {
+        if amountString.isEmpty {
+            return Color(hex: "48484C")
+        }
+        return entryType == "income" ? Color(hex: "00C896") : Color(hex: "FF6B6B")
+    }
+
     private var canSubmitAmount: Bool {
         !amountString.isEmpty
+    }
+
+    private var primaryButtonFill: Color {
+        guard canSubmitAmount else { return Theme.elevatedFill }
+        return entryType == "expense" ? Color(hex: "FF6B6B") : Theme.accent
+    }
+
+    private var primaryButtonForeground: Color {
+        canSubmitAmount ? Color.black : Theme.textTertiary
     }
 
     private let keypadKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"]
@@ -76,7 +100,7 @@ struct AddEntryView: View {
                 .padding(.bottom, 20)
 
             HStack {
-                Text(title)
+                Text(sheetTitle)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
@@ -89,14 +113,74 @@ struct AddEntryView: View {
             .padding(.horizontal, Theme.Layout.gutter)
             .padding(.bottom, 24)
 
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        entryType = "income"
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 16))
+                        Text("Income")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(entryType == "income" ? .black : Color(hex: "8A8A8E"))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(entryType == "income" ? Color(hex: "00C896") : Color(hex: "1C1C22"))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(
+                                        entryType == "income" ? Color.clear : Color.white.opacity(0.06),
+                                        lineWidth: 0.5
+                                    )
+                            )
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        entryType = "expense"
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 16))
+                        Text("Expense")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(entryType == "expense" ? .white : Color(hex: "8A8A8E"))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(entryType == "expense" ? Color(hex: "FF6B6B") : Color(hex: "1C1C22"))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(
+                                        entryType == "expense" ? Color.clear : Color.white.opacity(0.06),
+                                        lineWidth: 0.5
+                                    )
+                            )
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+
             VStack(spacing: 4) {
                 Group {
                     if amountString.isEmpty {
                         Text("$0")
-                            .foregroundStyle(Theme.textTertiary)
+                            .foregroundStyle(amountDisplayColor)
                     } else {
                         Text(displayAmount)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(amountDisplayColor)
                     }
                 }
                 .font(.system(size: heroDisplaySize, weight: .bold, design: .rounded))
@@ -164,12 +248,12 @@ struct AddEntryView: View {
             } label: {
                 Text(primaryButtonTitle)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(canSubmitAmount ? Color.black : Theme.textTertiary)
+                    .foregroundStyle(primaryButtonForeground)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(
                         Capsule()
-                            .fill(canSubmitAmount ? Theme.accent : Theme.elevatedFill)
+                            .fill(primaryButtonFill)
                     )
             }
             .disabled(!canSubmitAmount)
@@ -293,11 +377,13 @@ struct AddEntryView: View {
         if let existing = entry {
             existing.amount = amount
             existing.label = labelOrNil
+            existing.entryType = entryType
         } else {
             let newEntry = RevenueEntry(context: viewContext)
             newEntry.id = UUID()
             newEntry.amount = amount
             newEntry.label = labelOrNil
+            newEntry.entryType = entryType
             let now = Date()
             newEntry.date = now
             newEntry.createdAt = now

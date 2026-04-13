@@ -24,6 +24,14 @@ enum Theme {
     static let accent = Color(hex: 0x00C896)
     static let danger = Color(hex: 0xFF6B6B)
 
+    static let expense = Color(hex: "FF6B6B")
+    static let income = Color(hex: "00C896")
+    static let net = Color(hex: "FFFFFF")
+
+    static func entryColor(_ isExpense: Bool) -> Color {
+        isExpense ? expense : income
+    }
+
     static let textPrimary = Color(hex: 0xFFFFFF)
     static let textMuted = Color(hex: 0x888888)
     static let textSecondary = Color(hex: 0x8A8A8E)

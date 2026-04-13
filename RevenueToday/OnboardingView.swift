@@ -30,7 +30,7 @@ struct OnboardingView: View {
         OnboardingFeatureCard(id: "goal", emoji: "🎯", title: "Daily goals", line: "Ring fills as you earn"),
         OnboardingFeatureCard(id: "clients", emoji: "👥", title: "Client leaderboard", line: "Know who pays you most"),
         OnboardingFeatureCard(id: "pace", emoji: "📊", title: "Pace indicator", line: "Ahead or behind last month"),
-        OnboardingFeatureCard(id: "rate", emoji: "⏱", title: "Hourly rate", line: "Your real effective rate")
+        OnboardingFeatureCard(id: "pl", emoji: "💰", title: "Income + Expenses", line: "Full P&L with margin %")
     ]
 
     var body: some View {
@@ -206,6 +206,42 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(16)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.05))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "FF6B6B"))
+                        Text("EXPENSES")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundColor(Color(hex: "48484C"))
+                    }
+                    Spacer()
+                    Text("- $340")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Color(hex: "FF6B6B"))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+                HStack {
+                    Text("NET PROFIT · 86% margin")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundColor(Color(hex: "48484C"))
+                    Spacer()
+                    Text("$2,110")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
                 Rectangle()
                     .fill(Color.white.opacity(0.05))

@@ -313,7 +313,7 @@ struct SettingsView: View {
             now as CVarArg
         )
         let entries = (try? viewContext.fetch(request)) ?? []
-        let monthTotal = entries.reduce(0) { $0 + $1.amount }
+        let monthTotal = entries.filter(\.isIncome).reduce(0) { $0 + $1.amount }
 
         guard monthTotal > 0 else { return nil }
         return monthTotal / hoursWorked
